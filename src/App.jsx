@@ -7,6 +7,7 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { SuratMasuk } from './pages/admin/SuratMasuk';
 import { DraftDisposisi } from './pages/admin/DraftDisposisi';
 import { SuratKeluar } from './pages/admin/SuratKeluar';
+import { DataGuru } from './pages/admin/DataGuru';
 import { KepsekDashboard } from './pages/kepsek/KepsekDashboard';
 import { ReviewSurat } from './pages/kepsek/ReviewSurat';
 import { ReviewSuratKeluar } from './pages/kepsek/ReviewSuratKeluar';
@@ -46,6 +47,7 @@ function App() {
             <Route path="admin/draft-disposisi/:id" element={<DraftDisposisi />} />
             <Route path="admin/draft-disposisi" element={<DraftDisposisi />} />
             <Route path="admin/surat-keluar" element={<SuratKeluar />} />
+            <Route path="admin/guru" element={<DataGuru />} />
 
             {/* Kepala Sekolah Routes */}
             <Route path="kepsek/dashboard" element={<KepsekDashboard />} />

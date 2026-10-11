@@ -13,7 +13,8 @@ import {
   ShieldCheck, 
   HelpCircle,
   X,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, closeSidebar }) => {
@@ -48,6 +49,7 @@ export const Sidebar = ({ isOpen, closeSidebar }) => {
       badge: pendingKeluarCount > 0 ? `${pendingKeluarCount} TTD` : null,
       badgeColor: 'bg-purple-100 text-purple-800'
     },
+    { name: 'Data Dewan Guru', path: '/admin/guru', icon: Users },
     { name: 'Arsip Digital', path: '/arsip', icon: Archive },
   ];
 

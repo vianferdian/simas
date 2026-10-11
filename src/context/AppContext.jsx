@@ -6,6 +6,8 @@ import {
   INITIAL_SURAT_KELUAR, 
   INITIAL_NOTIFICATIONS 
 } from '../data/mockData';
+import { guruService } from '../services/guruService';
+import { authService } from '../services/authService';
 
 const AppContext = createContext();
 
@@ -32,6 +34,9 @@ export const AppProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : INITIAL_GURU;
   });
 
+  const [guruDataSource, setGuruDataSource] = useState('local');
+  const [isGuruLoading, setIsGuruLoading] = useState(false);
+
   const [notifications, setNotifications] = useState(() => {
     const saved = localStorage.getItem('simas_notifications');
     return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
@@ -57,7 +62,9 @@ export const AppProvider = ({ children }) => {
 
   // Sync to localStorage
   useEffect(() => {
-    localStorage.setItem('simas_user', JSON.stringify(currentUser));
+    if (currentUser) {
+      localStorage.setItem('simas_user', JSON.stringify(currentUser));
+    }
   }, [currentUser]);
 
   useEffect(() => {
@@ -76,43 +83,94 @@ export const AppProvider = ({ children }) => {
     localStorage.setItem('simas_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  // Auth functions
-  const login = (email, password) => {
-    const user = INITIAL_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      setCurrentUser(user);
-      showToast(`Selamat datang, ${user.nama}!`, 'success');
-      return { success: true, user };
+  // Fetch Guru from API on initialization
+  const refreshGuruList = async (silent = false) => {
+    setIsGuruLoading(true);
+    try {
+      const res = await guruService.getAll();
+      setGuruList(res.data);
+      setGuruDataSource(res.source);
+      if (!silent) {
+        if (res.source === 'api') {
+          showToast('Data guru berhasil disinkronkan dari REST API backend!', 'success');
+        } else {
+          showToast('Data guru dimuat dari penyimpanan lokal (API backend offline).', 'info');
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching guru:', err);
+    } finally {
+      setIsGuruLoading(false);
     }
-    // Fallback demo matching
-    if (email.includes('admin')) {
-      const u = INITIAL_USERS[0];
-      setCurrentUser(u);
-      return { success: true, user: u };
-    }
-    if (email.includes('kepsek')) {
-      const u = INITIAL_USERS[1];
-      setCurrentUser(u);
-      return { success: true, user: u };
-    }
-    if (email.includes('guru') || email.includes('budi')) {
-      const u = INITIAL_USERS[2];
-      setCurrentUser(u);
-      return { success: true, user: u };
-    }
-    return { success: false, message: 'Email atau password tidak valid.' };
   };
 
-  const logout = () => {
+  useEffect(() => {
+    refreshGuruList(true);
+  }, []);
+
+  // Guru CRUD operations via API Service
+  const addGuru = async (newGuruData) => {
+    try {
+      const saved = await guruService.create(newGuruData);
+      setGuruList(prev => [saved, ...prev]);
+      showToast(`Data guru "${saved.nama}" berhasil ditambahkan!`, 'success');
+      return saved;
+    } catch (err) {
+      showToast('Gagal menambahkan data guru.', 'error');
+      throw err;
+    }
+  };
+
+  const updateGuru = async (id, updatedData) => {
+    try {
+      const saved = await guruService.update(id, updatedData);
+      setGuruList(prev => prev.map(g => g.id === id ? { ...g, ...saved } : g));
+      showToast(`Data guru "${saved.nama || ''}" berhasil diperbarui!`, 'success');
+      return saved;
+    } catch (err) {
+      showToast('Gagal memperbarui data guru.', 'error');
+      throw err;
+    }
+  };
+
+  const deleteGuru = async (id) => {
+    try {
+      await guruService.delete(id);
+      setGuruList(prev => prev.filter(g => g.id !== id));
+      showToast('Data guru berhasil dihapus.', 'info');
+    } catch (err) {
+      showToast('Gagal menghapus data guru.', 'error');
+      throw err;
+    }
+  };
+
+  // Auth functions with API Integration
+  const login = async (email, password) => {
+    try {
+      const res = await authService.login(email, password);
+      if (res.success) {
+        setCurrentUser(res.user);
+        const sourceLabel = res.source === 'api' ? ' (Terautentikasi API)' : '';
+        showToast(`Selamat datang, ${res.user.nama}!${sourceLabel}`, 'success');
+        return res;
+      }
+      return res;
+    } catch (error) {
+      return { success: false, message: 'Gagal terhubung ke layanan otentikasi.' };
+    }
+  };
+
+  const logout = async () => {
+    await authService.logout();
     setCurrentUser(null);
-    localStorage.removeItem('simas_user');
-    showToast('Anda telah berhasil keluar.', 'info');
+    showToast('Anda telah berhasil keluar dari sistem.', 'info');
   };
 
   const switchRole = (role) => {
     const targetUser = INITIAL_USERS.find(u => u.role === role);
     if (targetUser) {
       setCurrentUser(targetUser);
+      localStorage.setItem('simas_user', JSON.stringify(targetUser));
       showToast(`Beralih peran sebagai: ${targetUser.nama} (${targetUser.role.toUpperCase()})`, 'info');
     }
   };
@@ -143,7 +201,7 @@ export const AppProvider = ({ children }) => {
     showToast('Surat masuk berhasil dihapus.', 'info');
   };
 
-  // Admin: Draft Disposisi (Admin proposes teacher)
+  // Admin: Draft Disposisi
   const saveDraftDisposisi = (suratId, guruId, instruksiAwal) => {
     setSuratMasukList(prev => prev.map(surat => {
       if (surat.id === suratId) {
@@ -160,7 +218,6 @@ export const AppProvider = ({ children }) => {
       return surat;
     }));
 
-    // Add notification for Kepsek
     const notifItem = {
       id: `notif-${Date.now()}`,
       type: 'approval',
@@ -202,7 +259,6 @@ export const AppProvider = ({ children }) => {
       return surat;
     }));
 
-    // Notification for Guru
     const notifGuru = {
       id: `notif-${Date.now()}`,
       type: 'assignment',
@@ -216,7 +272,6 @@ export const AppProvider = ({ children }) => {
     };
     setNotifications(prev => [notifGuru, ...prev]);
 
-    // Open simulated WhatsApp modal
     const waMessage = `Assalamu'alaikum wr. wb. Yth. Bapak/Ibu *${targetGuru.nama}*,\n\nAnda mendapatkan tugas disposisi baru dari Kepala Sekolah terkait:\n📄 *Perihal:* ${targetSurat?.perihal}\n🔢 *No. Surat:* ${targetSurat?.nomor_surat}\n📝 *Instruksi:* ${instruksiFinal || targetSurat?.disposisiDraft?.instruksi_tu}\n\nSilakan akses sistem SIMAS untuk memulai proses pengerjaan:\n🔗 https://simas.sekolah.sch.id/guru/tugas/${suratId}`;
 
     setWhatsAppModal({
@@ -347,6 +402,12 @@ export const AppProvider = ({ children }) => {
       suratMasukList,
       suratKeluarList,
       guruList,
+      guruDataSource,
+      isGuruLoading,
+      refreshGuruList,
+      addGuru,
+      updateGuru,
+      deleteGuru,
       notifications,
       addSuratMasuk,
       updateSuratMasuk,
